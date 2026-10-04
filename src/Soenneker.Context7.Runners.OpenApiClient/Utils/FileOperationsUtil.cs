@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Kiota.Util.Abstract;
+using Soenneker.OpenApi.Fixer;
 using Soenneker.OpenApi.Fixer.Abstract;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
@@ -21,7 +22,6 @@ using System.Collections.Generic;
 
 namespace Soenneker.Context7.Runners.OpenApiClient.Utils;
 
-/// <inheritdoc cref="IFileOperationsUtil"/>
 public sealed class FileOperationsUtil : IFileOperationsUtil
 {
     private readonly ILogger<FileOperationsUtil> _logger;
@@ -66,7 +66,16 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
 
         string fixedFilePath = Path.Combine(gitDirectory, "openapi.fixed.json");
         await _fileUtil.DeleteIfExists(fixedFilePath, cancellationToken: cancellationToken);
-        await _openApiFixer.Fix(filePath, fixedFilePath, cancellationToken).NoSync();
+        // Context7 declares trustScore as an integer, but search responses include fractional scores.
+        // Correct the schema before generation so Kiota reads and writes the value as a double.
+        var options = new OpenApiFixerOptions
+        {
+            SchemaTypeOverrides =
+            {
+                ["/components/schemas/Library/properties/trustScore"] = new OpenApiSchemaTypeOverride { Type = "number", Format = "double" }
+            }
+        };
+        await _openApiFixer.Fix(filePath, fixedFilePath, options, cancellationToken).NoSync();
 
         await _kiotaUtil.EnsureInstalled(cancellationToken);
 
